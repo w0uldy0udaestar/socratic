@@ -1,0 +1,18 @@
+{
+  "name": "mind-reader",
+  "version": "0.1.0",
+  "description": "CLI AI 에이전트가 모호한 요청을 추측하지 않게 만드는 의도 파악 게이트",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "test": "node test/unit.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -6,7 +6,17 @@ CLI AI 에이전트가 당신의 모호한 요청을 추측으로 처리하지 �
 
 ## 상태
 
-설계 단계 (v0.1 목표: Claude Code 지원). 마스터플랜은 [PLAN.md](PLAN.md), 설계 근거 리서치는 [docs/research-synthesis.md](docs/research-synthesis.md) 참조.
+**v0.1 코어 구현 완료** (Claude Code). 유닛 68건 + 헤드리스 E2E 통과 — [구현 노트](docs/m1-implementation-notes.md). 다음은 실사용 검증(M2).
+마스터플랜은 [PLAN.md](PLAN.md), 설계 근거는 [리서치 종합](docs/research-synthesis.md) 참조.
+
+## 동작
+
+1. 프롬프트를 훅으로 가로채 의도 파악 프로토콜을 주입한다 (모든 요청, 자동)
+2. 계획이 갈리지 않는 명확한 요청은 질문 없이 통과, 갈리면 선택지 질문으로 파고든다
+3. 승인 전에는 쓰기·실행 도구가 차단된다 (읽기·조사는 허용)
+4. `[MR-SPEC]` 의도 명세를 제시하고 "승인"을 받으면 게이트가 열리고, 명세는 `~/.mind-reader/`에 아카이브된다
+
+**언제든 끄기**: `MIND_READER_OFF=1` (전 훅 즉시 통과)
 
 ## 로드맵
 
@@ -15,8 +25,11 @@ CLI AI 에이전트가 당신의 모호한 요청을 추측으로 처리하지 �
 - v0.3 — OpenAI Codex CLI
 - v0.4 — opencode / Amp
 
-## 설치 (예정)
+## 설치
 
 ```bash
-npx mind-reader init   # 또는: git clone 후 ./install.sh
+git clone https://github.com/w0uldy0udaestar/mind-reader.git
+cd mind-reader && ./install.sh     # 빌드 + ~/.claude/settings.json에 훅 병합(백업 후 append)
 ```
+
+제거는 `./uninstall.sh`. 설치 스크립트는 기존 설정을 덮어쓰지 않고, 우리 훅만 마커로 식별해 추가·제거합니다.
