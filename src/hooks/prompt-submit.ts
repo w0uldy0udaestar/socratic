@@ -6,6 +6,8 @@ import {
   lastAssistantTurn,
   specHashOf,
   isDisabled,
+  logEvent,
+  countToolUsesSince,
   output,
 } from "../common";
 import { isPassthrough, isApproval, startsNewCycle } from "../filter";
@@ -40,6 +42,11 @@ function main(): void {
     if (currentHash) {
       saveState(input, "approved", { specHash: currentHash });
       archiveSpec(input, turn.text);
+      logEvent(input, "approved", {
+        questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
+        specVersions: state.specVersions ?? 1,
+        cycleStartedAt: state.cycleStartedAt,
+      });
       inject(APPROVED_NOTICE);
       return;
     }
@@ -49,8 +56,7 @@ function main(): void {
   // 승인 후 새 발화 → 새 사이클 (승인 상태가 다음 작업으로 새지 않게, J1)
   if (state.phase === "approved") {
     if (!startsNewCycle(prompt)) return;
-    saveState(input, "probing");
-    inject(PROTOCOL);
+    startCycle(input, prompt);
     return;
   }
 
@@ -59,7 +65,15 @@ function main(): void {
   // 진행 중(probing/spec_pending)의 발화는 문답의 일부 → 재주입하지 않음
   if (state.phase === "probing" || state.phase === "spec_pending") return;
 
-  saveState(input, "probing");
+  startCycle(input, prompt);
+}
+
+function startCycle(input: ReturnType<typeof readStdin>, prompt: string): void {
+  // 미완료 사이클(승인 없이 끝난 것)은 stats에서 cycle_start와 approved의 차이로 산출한다.
+  // probing 중의 발화는 문답의 일부로 처리되므로 이 지점에서는 포기를 판정할 수 없다.
+  const startedAt = new Date().toISOString();
+  saveState(input, "probing", { cycleStartedAt: startedAt, specVersions: 0 });
+  logEvent(input, "cycle_start", { promptLen: prompt.trim().length });
   inject(PROTOCOL);
 }
 

@@ -1,4 +1,4 @@
-import { readStdin, loadState, isDisabled, output } from "../common";
+import { readStdin, loadState, isDisabled, logEvent, output, HookInput } from "../common";
 import { isReadOnlyCommand } from "../bash-guard";
 
 /**
@@ -32,9 +32,17 @@ function deny(reason: string): void {
 const GATE_MSG =
   "mind-reader gate: 의도 명세가 아직 승인되지 않았습니다. 읽기·조사 도구는 사용할 수 있습니다. 사용자에게 의도 파악 질문을 진행하고 [MR-SPEC] 명세를 제시해 '승인'을 받으세요.";
 
+/** 계측을 위해 현재 입력을 보관 (deny 시 기록) */
+let current: HookInput = {};
+
+function denyAndLog(reason: string, tool: string): void {
+  logEvent(current, "gate_deny", { tool });
+  deny(reason);
+}
+
 function main(): void {
   if (isDisabled()) return; // kill switch
-  const input = readStdin();
+  const input = (current = readStdin());
   const tool = String(input.tool_name ?? "");
 
   if (loadState(input).phase === "approved") return; // 무의견 통과
@@ -44,8 +52,9 @@ function main(): void {
   if (tool === "Bash") {
     const cmd = String((input.tool_input as any)?.command ?? "");
     if (isReadOnlyCommand(cmd)) return;
-    deny(
-      `${GATE_MSG} (Bash는 파이프 없는 단일 읽기 명령만 허용됩니다: ls, cat, grep, rg, find, git status/log/diff 등)`
+    denyAndLog(
+      `${GATE_MSG} (Bash는 파이프 없는 단일 읽기 명령만 허용됩니다: ls, cat, grep, rg, find, git status/log/diff 등)`,
+      tool
     );
     return;
   }
@@ -53,7 +62,7 @@ function main(): void {
   // MCP 등 이름 기반 읽기 도구 통과
   if (tool.startsWith("mcp__") && READ_LIKE.test(tool)) return;
 
-  deny(GATE_MSG);
+  denyAndLog(GATE_MSG, tool);
 }
 
 try {

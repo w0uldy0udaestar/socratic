@@ -12,8 +12,22 @@ export interface SessionState {
   specHash?: string;
   /** Stop 게이트 재차단 횟수 (J5) */
   stopBlocks?: number;
+  /** 계측(M2): 현재 사이클 시작 시각 ISO */
+  cycleStartedAt?: string;
+  /** 계측(M2): 이번 사이클에서 명세가 제시된 횟수 — 2 이상이면 수정된 것 */
+  specVersions?: number;
   updatedAt: string;
 }
+
+/** 계측 이벤트 (M2 dogfooding 지표 산출용) */
+export type EventType =
+  | "cycle_start"
+  | "spec_presented"
+  | "approved"
+  | "gate_deny"
+  | "stop_block"
+  | "cycle_abandoned"
+  | "disabled";
 
 export interface HookInput {
   session_id?: string;
@@ -91,6 +105,60 @@ export function saveState(
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state));
   fs.renameSync(tmp, file); // 원자적 교체 (J7)
+}
+
+/**
+ * 계측 이벤트를 JSONL로 append한다 (M2).
+ * 로깅 실패가 게이트 동작에 영향을 주면 안 되므로 모든 오류를 삼킨다.
+ */
+export function logEvent(
+  input: HookInput,
+  type: EventType,
+  data: Record<string, unknown> = {}
+): void {
+  try {
+    const dir = stateRoot(input);
+    fs.mkdirSync(dir, { recursive: true });
+    const line =
+      JSON.stringify({
+        t: new Date().toISOString(),
+        type,
+        session: hash(input.session_id || "default"),
+        ...data,
+      }) + "\n";
+    fs.appendFileSync(path.join(dir, "events.jsonl"), line);
+  } catch {
+    /* 계측은 부수적 — 절대 실패를 전파하지 않는다 */
+  }
+}
+
+/** 사이클 시작 이후 특정 도구가 몇 번 쓰였는지 센다 (질문 수 계측용). */
+export function countToolUsesSince(
+  input: HookInput,
+  toolName: string,
+  sinceIso?: string
+): number {
+  const p = input.transcript_path;
+  if (!p) return 0;
+  let n = 0;
+  try {
+    for (const line of fs.readFileSync(p, "utf8").trim().split("\n")) {
+      let e: any;
+      try {
+        e = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (e?.type !== "assistant") continue;
+      if (sinceIso && typeof e.timestamp === "string" && e.timestamp < sinceIso) continue;
+      const content = e?.message?.content;
+      if (!Array.isArray(content)) continue;
+      n += content.filter((c: any) => c?.type === "tool_use" && c.name === toolName).length;
+    }
+  } catch {
+    /* 트랜스크립트 접근 실패는 0으로 */
+  }
+  return n;
 }
 
 /** 마지막 어시스턴트 턴의 텍스트와 사용 도구를 함께 반환한다. */

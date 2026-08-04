@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc",
-    "test": "node test/unit.js"
+    "test": "node test/unit.js && node test/telemetry.js",
+    "stats": "node dist/stats.js"
   },
   "engines": {
     "node": ">=18"

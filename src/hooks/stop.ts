@@ -5,6 +5,8 @@ import {
   lastAssistantTurn,
   specHashOf,
   isDisabled,
+  logEvent,
+  countToolUsesSince,
   output,
 } from "../common";
 
@@ -22,16 +24,32 @@ function main(): void {
   if (isDisabled()) return;
   const input = readStdin();
   const state = loadState(input);
-  if (state.phase !== "probing") return;
+  // spec_pending에서도 명세가 갱신될 수 있으므로(사용자가 수정 요청 → 모델이 재제시) 함께 처리한다.
+  if (state.phase !== "probing" && state.phase !== "spec_pending") return;
 
   const turn = lastAssistantTurn(input);
 
   // 명세 제시 → 승인 대기 (명세 해시를 바인딩해 저장)
   const h = specHashOf(turn.text);
   if (h) {
-    saveState(input, "spec_pending", { specHash: h });
+    // 같은 해시면 재제시가 아니라 동일 명세 — 수정 횟수 계측에서 제외
+    const versions = (state.specVersions ?? 0) + (h === state.specHash ? 0 : 1);
+    saveState(input, "spec_pending", {
+      specHash: h,
+      specVersions: versions,
+      cycleStartedAt: state.cycleStartedAt,
+    });
+    if (h !== state.specHash) {
+      logEvent(input, "spec_presented", {
+        version: versions,
+        questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
+      });
+    }
     return;
   }
+
+  // 명세 대기 중인데 이번 턴에 명세가 없으면(수정 논의 등) 종료를 막지 않는다.
+  if (state.phase === "spec_pending") return;
 
   // 사용자에게 실제로 묻는 중이면 종료 허용: AskUserQuestion 사용이 가장 깨끗한 신호 (J4)
   if (turn.tools.some((t) => t === "AskUserQuestion" || /ask.*question/i.test(t))) return;
@@ -40,7 +58,13 @@ function main(): void {
 
   const blocks = state.stopBlocks ?? 0;
   if (input.stop_hook_active === true && blocks >= MAX_BLOCKS) return; // 안전 밸브
-  saveState(input, "probing", { stopBlocks: blocks + 1, specHash: state.specHash });
+  saveState(input, "probing", {
+    stopBlocks: blocks + 1,
+    specHash: state.specHash,
+    specVersions: state.specVersions,
+    cycleStartedAt: state.cycleStartedAt,
+  });
+  logEvent(input, "stop_block", { n: blocks + 1 });
 
   output({
     decision: "block",
