@@ -74,7 +74,7 @@ mind-reader/
 - **M0 실측 스파이크** ✅ 완료 (2026-08-04): `UserPromptSubmit` 주입·`PreToolUse` 차단·상태 파일 공유·**`Stop` 훅 종료 차단(D11 해결)** 전부 실측 통과 — 결과와 설계 반영 사항은 `docs/m0-spike-results.md`. 남은 실측(타임아웃 경계, fail-open, 인터랙티브 UX)은 M1에서
 - **M1 코어 구현** ✅ 완료 (2026-08-04): 훅 3종 + Bash 가드 + 프로토콜 v1 + 상태머신 + install/uninstall. 유닛 68건·E2E 통과, 코드 리뷰 critical 4건·major 8건 수정 — `docs/m1-implementation-notes.md`
 - **M2 자체 사용 검증** (dogfooding) 🔄 진행 중 (2026-08-04 시작): 계측 계층·stats CLI 구현 완료, 전역 설치 완료. 설치 첫날 결함 4건 발견·수정(idle 데드락, uninstall 식별 실패, 프로젝트 예외 부재, 셀프테스트 무력화) — `docs/m2-dogfooding-log.md`. 이후 일상 작업에 투입해 지표 관찰: 질문 발생률, 평균 질문 수, **명세 수정률**(핵심), 미완료율
-- **M3 프로토콜 튜닝**: M2 데이터로 게이트·예산·명세 형식 조정
+- **M3 마찰 완화** (M2 결론으로 우선순위 상승): 자명한 요청에도 승인 왕복이 강제되는 문제 해결. D2를 모든 요청에 적용한 것이 원인이며, D9(수렴까지 질문)는 유지하되 승인 관문만 완화하는 방향. 선택지는 `docs/qa-report.md` 참조. **이것이 재설치의 선결 조건**
 - **v0.2+**: Gemini CLI(`BeforeAgent`/`BeforeTool`/`ask_user`) → Codex CLI(질문 UI 평문 폴백, `request_user_input` Plan 전용 재실측 선행) → opencode/Amp(TS 플러그인) → 공개 출시(마켓플레이스 등재)
 
 ## 5. 리스크 대장 (요약 — 상세는 docs/research-synthesis.md)
