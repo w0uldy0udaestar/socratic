@@ -1,7 +1,7 @@
 {
-  "name": "mind-reader",
+  "name": "socratic",
   "version": "0.1.0",
-  "description": "CLI AI 에이전트가 모호한 요청을 추측하지 않게 만드는 의도 파악 게이트",
+  "description": "The Socratic method for CLI AI agents — clarify intent by questioning, approve in one click, execute exactly that",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {

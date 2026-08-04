@@ -8,7 +8,7 @@
   </g>
   <!-- wordmark with inline cursor (flows with actual font metrics) -->
   <text x="64" y="98" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="50" font-weight="700">
-    <tspan fill="#3fb950">❯ </tspan><tspan fill="#e6edf3">mind</tspan><tspan fill="#ff7a59">-</tspan><tspan fill="#e6edf3">reader</tspan><tspan fill="#ff7a59">▊<animate attributeName="fill-opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/></tspan>
+    <tspan fill="#3fb950">❯ </tspan><tspan fill="#e6edf3">socratic</tspan><tspan fill="#ff7a59">▊<animate attributeName="fill-opacity" values="1;1;0;0" dur="1.2s" repeatCount="indefinite"/></tspan>
   </text>
   <!-- tagline -->
   <text x="66" y="140" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="15" fill="#8b949e">Your agent shouldn't guess. Clarify → approve (1 click) → execute.</text>

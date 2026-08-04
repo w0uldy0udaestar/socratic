@@ -8,3 +8,4 @@
 - **MCP 상태 서버**: 다중 에이전트 지원 시 세션 상태·명세를 MCP 리소스로 공유 (v0.4 이후 검토)
 - **Cursor CLI 부분 지원**: L0(지침)+L2(게이트)만이라도 (주입 불가 구조 한계)
 - **EARS 표기법 옵션**: 명세를 정형 문법으로 출력하는 모드 (강제 금지, 옵션만)
+- **내부 식별자 socratic 리네임** (2026-08-04 리브랜딩 후속): `~/.mind-reader/` → `~/.socratic/`, `MIND_READER_OFF` → `SOCRATIC_OFF`, `.mind-reader-off` → `.socratic-off`, 설치 마커 `_mindReader`, 게이트 메시지 "mind-reader gate". 코드·테스트·설치 스크립트 연쇄 수정이라 별도 작업 단위로. 기존 식별자 하위호환(둘 다 인식) 여부도 결정 필요

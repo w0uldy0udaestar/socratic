@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/hero.svg" width="880" alt="mind-reader — your agent shouldn't guess. It asks, then executes exactly what you approved." />
+<img src="assets/hero.svg" width="880" alt="socratic — your agent shouldn't guess. It asks, then executes exactly what you approved." />
 
 <br/><br/>
 
@@ -13,6 +13,8 @@
 **A hook-based hard gate for CLI coding agents.** It intercepts every prompt, pins down your
 *actual* intent through multiple-choice questions, and **technically blocks all writes and
 command execution** until you approve a one-screen intent spec — with a single click.
+
+*Named for the Socratic method: truth is drawn out by questioning — never assumed.*
 
 </div>
 
@@ -33,7 +35,7 @@ genuinely fork.
 CLI agents are eager. Give them an ambiguous request and they'll pick *an* interpretation —
 confidently, silently — and run with it. You find out three files later.
 
-|   | Without | With mind-reader |
+|   | Without | With socratic |
 |---|---|---|
 | Ambiguous request | 🎲 The model picks an interpretation and runs | 🎯 Plans are sampled; where they fork, you choose |
 | "Ask before acting" | 🙏 A prompt the model may ignore | 🔒 A `PreToolUse` hook that *cannot* be ignored |
@@ -42,7 +44,8 @@ confidently, silently — and run with it. You find out three files later.
 | Multi-turn drift | 📉 [~39% quality drop](https://arxiv.org/abs/2505.06120) from scattered context | 📄 The refined spec becomes a single-turn contract |
 
 Prompting the model to "ask clarifying questions" doesn't fix this, because it leaves the
-decision to model discretion: sometimes it asks, sometimes it doesn't.
+decision to model discretion: sometimes it asks, sometimes it doesn't. **socratic** removes
+the discretion.
 
 > **The model doesn't remember the process. The process enforces itself.**
 
@@ -93,8 +96,8 @@ sequenceDiagram
 Requires [Claude Code](https://claude.com/claude-code) and Node ≥ 18.
 
 ```bash
-git clone https://github.com/w0uldy0udaestar/mind-reader.git
-cd mind-reader && ./install.sh
+git clone https://github.com/w0uldy0udaestar/socratic.git
+cd socratic && ./install.sh
 ```
 
 The installer builds, then **merges** hooks into `~/.claude/settings.json` — it backs up first,
@@ -114,7 +117,7 @@ need out:
 
 ## Telemetry
 
-mind-reader instruments itself so you can tell whether it's earning its keep:
+socratic instruments itself so you can tell whether it's earning its keep:
 
 ```bash
 npm run stats           # all projects
