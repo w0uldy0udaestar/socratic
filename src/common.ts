@@ -41,10 +41,35 @@ export interface HookInput {
   [key: string]: unknown;
 }
 
-/** 사용자가 언제든 게이트를 벗어날 수 있는 탈출구 (리뷰 제안: kill switch) */
-export function isDisabled(): boolean {
+/** 전역 kill switch — 환경변수로 즉시 비활성화 */
+function envDisabled(): boolean {
   const v = process.env.MIND_READER_OFF;
   return v === "1" || v === "true";
+}
+
+/**
+ * 프로젝트 단위 예외: 프로젝트 루트(또는 상위 경로)에 .mind-reader-off 파일이 있으면
+ * 그 프로젝트에서만 비활성화한다. mind-reader 자체를 개발할 때 게이트에 갇히지 않게 한다.
+ */
+export function isProjectDisabled(input: HookInput): boolean {
+  let dir = projectDir(input);
+  for (let i = 0; i < 12; i++) {
+    try {
+      if (fs.existsSync(path.join(dir, ".mind-reader-off"))) return true;
+    } catch {
+      /* 접근 불가는 무시 */
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return false;
+}
+
+/** 훅이 개입하지 말아야 하는 상황인가 (전역 kill switch 또는 프로젝트 예외) */
+export function isDisabled(input?: HookInput): boolean {
+  if (envDisabled()) return true;
+  return input ? isProjectDisabled(input) : false;
 }
 
 export function readStdin(): HookInput {

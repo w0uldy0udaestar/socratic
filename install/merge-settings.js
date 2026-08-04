@@ -11,6 +11,39 @@ const os = require("os");
 
 const MARKER = "_mindReader";
 const VERSION = "0.1.0";
+/**
+ * 식별 전략 (실사용에서 확인된 제약):
+ * Claude Code가 settings.json을 정규화하면서 알 수 없는 필드(_mindReader)를 제거하므로
+ * 마커만으로는 제거 시 우리 항목을 찾지 못한다. 그래서 설치 시 명령 문자열을 매니페스트에
+ * 남기고, 매니페스트 대조 → 실행 경로 대조 → 마커 순으로 식별한다.
+ */
+const MANIFEST = path.join(os.homedir(), ".mind-reader", "install.json");
+const HOOK_DIR = path.join(repoRootOf(), "dist", "hooks");
+
+function repoRootOf() {
+  return path.resolve(__dirname, "..");
+}
+
+function readManifest() {
+  try {
+    const m = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+    return Array.isArray(m.commands) ? m.commands : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeManifest(commands) {
+  try {
+    fs.mkdirSync(path.dirname(MANIFEST), { recursive: true });
+    fs.writeFileSync(
+      MANIFEST,
+      JSON.stringify({ version: VERSION, installedAt: new Date().toISOString(), commands }, null, 2)
+    );
+  } catch {
+    /* 매니페스트 기록 실패해도 경로 대조 폴백이 있다 */
+  }
+}
 
 const mode = process.argv[2];
 if (mode !== "add" && mode !== "remove") {
@@ -37,8 +70,16 @@ const hookDefs = {
   },
 };
 
-const isOurs = (entry) =>
-  entry && typeof entry === "object" && Object.prototype.hasOwnProperty.call(entry, MARKER);
+const manifestCommands = new Set(readManifest());
+
+/** 우리가 설치한 항목인가 — 매니페스트 → 실행 경로 → 마커 순으로 확인 */
+function isOurs(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (Object.prototype.hasOwnProperty.call(entry, MARKER)) return true;
+  const cmds = (entry.hooks || []).map((h) => (typeof h.command === "string" ? h.command : ""));
+  if (cmds.some((c) => manifestCommands.has(c))) return true;
+  return cmds.some((c) => c.includes(HOOK_DIR));
+}
 
 let settings = {};
 if (fs.existsSync(settingsPath)) {
@@ -90,6 +131,16 @@ for (const [event, def] of Object.entries(hookDefs)) {
 if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
 
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+
+if (mode === "add") {
+  writeManifest(Object.values(hookDefs).flatMap((d) => d.hooks.map((h) => h.command)));
+} else {
+  try {
+    fs.unlinkSync(MANIFEST);
+  } catch {
+    /* 없으면 무시 */
+  }
+}
 
 if (mode === "add") {
   console.log(`설치 완료: ${settingsPath} (등록 ${added}건, 기존 항목 ${removed}건 갱신)`);

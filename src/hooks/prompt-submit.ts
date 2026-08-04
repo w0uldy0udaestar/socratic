@@ -24,8 +24,8 @@ function inject(text: string): void {
 }
 
 function main(): void {
-  if (isDisabled()) return; // kill switch
   const input = readStdin();
+  if (isDisabled(input)) return; // kill switch / 프로젝트 예외
   const prompt = String(input.prompt ?? "");
   const state = loadState(input);
 

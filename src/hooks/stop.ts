@@ -21,8 +21,8 @@ const MAX_BLOCKS = 3;
 const CLOSING_PHRASE = /(더 필요한|필요하신|있으면 말씀|도와드릴|도와드릴까요|궁금한 점|알려주세요[.!]?$)/;
 
 function main(): void {
-  if (isDisabled()) return;
   const input = readStdin();
+  if (isDisabled(input)) return; // kill switch / 프로젝트 예외
   const state = loadState(input);
   // spec_pending에서도 명세가 갱신될 수 있으므로(사용자가 수정 요청 → 모델이 재제시) 함께 처리한다.
   if (state.phase !== "probing" && state.phase !== "spec_pending") return;

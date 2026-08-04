@@ -6,6 +6,9 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 
+// 실사용 지표(~/.mind-reader)를 오염시키지 않도록 HOME을 격리한다
+process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), "mr-home-"));
+
 const ROOT = path.resolve(__dirname, "..");
 let failures = 0;
 

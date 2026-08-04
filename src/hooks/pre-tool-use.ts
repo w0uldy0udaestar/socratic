@@ -41,11 +41,14 @@ function denyAndLog(reason: string, tool: string): void {
 }
 
 function main(): void {
-  if (isDisabled()) return; // kill switch
   const input = (current = readStdin());
+  if (isDisabled(input)) return; // kill switch / 프로젝트 예외
   const tool = String(input.tool_name ?? "");
 
-  if (loadState(input).phase === "approved") return; // 무의견 통과
+  // 게이트는 사이클이 진행 중일 때만 작동한다.
+  // idle(시작된 사이클 없음)에서 차단하면 승인할 명세 자체가 없어 빠져나올 수 없다 — 데드락.
+  const phase = loadState(input).phase;
+  if (phase !== "probing" && phase !== "spec_pending") return;
 
   if (ALWAYS_ALLOWED.has(tool)) return;
 
