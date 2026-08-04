@@ -4,6 +4,7 @@ import {
   saveState,
   lastAssistantTurn,
   specHashOf,
+  resolveAskApproval,
   isDisabled,
   logEvent,
   countToolUsesSince,
@@ -23,13 +24,14 @@ const CLOSING_PHRASE = /(더 필요한|필요하신|있으면 말씀|도와드�
 function main(): void {
   const input = readStdin();
   if (isDisabled(input)) return; // kill switch / 프로젝트 예외
-  const state = loadState(input);
   // spec_pending에서도 명세가 갱신될 수 있으므로(사용자가 수정 요청 → 모델이 재제시) 함께 처리한다.
+  let state = loadState(input);
   if (state.phase !== "probing" && state.phase !== "spec_pending") return;
 
   const turn = lastAssistantTurn(input);
 
-  // 명세 제시 → 승인 대기 (명세 해시를 바인딩해 저장)
+  // 명세 제시를 승인 판정보다 먼저 기록한다 — 같은 턴에 명세와 선택창 승인이 모두 있으면
+  // 기록 전에 approved로 빠져 spec_presented 이벤트가 유실된다 (명세 수정률 계측).
   const h = specHashOf(turn.text);
   if (h) {
     // 같은 해시면 재제시가 아니라 동일 명세 — 수정 횟수 계측에서 제외
@@ -45,8 +47,14 @@ function main(): void {
         questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
       });
     }
-    return;
+    state = { ...state, phase: "spec_pending", specHash: h, specVersions: versions };
   }
+
+  // 선택창(AskUserQuestion)으로 승인된 채 턴이 끝나는 경우(읽기만 하는 작업 등)를
+  // 여기서 전이한다 — 승인 후의 정상 종료를 차단하면 안 된다 (M3).
+  state = resolveAskApproval(input, state);
+  if (state.phase === "approved") return;
+  if (h) return; // 명세 제시 → 승인 대기
 
   // 명세 대기 중인데 이번 턴에 명세가 없으면(수정 논의 등) 종료를 막지 않는다.
   if (state.phase === "spec_pending") return;
@@ -69,7 +77,7 @@ function main(): void {
   output({
     decision: "block",
     reason:
-      "mind-reader: 아직 의도 파악이 끝나지 않았다. AskUserQuestion으로 사용자에게 질문을 계속하거나, 의도가 파악됐다면 [MR-SPEC] 로 시작하는 의도 명세를 제시하고 '승인'을 요청한 뒤 종료하라.",
+      "mind-reader: 아직 의도 파악이 끝나지 않았다. AskUserQuestion으로 사용자에게 질문을 계속하거나, 의도가 파악됐다면 [MR-SPEC] 로 시작하는 의도 명세를 제시하고 같은 턴에 AskUserQuestion으로 '승인'/'수정 필요' 선택지를 제시하라.",
   });
 }
 

@@ -24,6 +24,20 @@ export function isApproval(prompt: string): boolean {
   return APPROVAL.test(p);
 }
 
+/**
+ * AskUserQuestion 선택 답변이 승인인가 (M3 선택창 승인 채널).
+ * 후행 괄호 장식("승인 (권장)" 등)만 걷어내고 전체 일치를 요구한다 — 라벨 *안에*
+ * '승인'이 포함된 다른 옵션("비가역만 항상 승인")이 승인으로 오인되면 안 된다.
+ */
+export function isAskApproval(answer: string): boolean {
+  const raw = norm(answer);
+  // 부정 가드는 괄호를 걷어내기 전 원문에 적용한다 — 직접 입력 "승인 (수정 후에)" 같은
+  // 조건부 답변이 무조건 승인으로 처리되면 안 된다. 채팅 채널(isApproval)과 판정을 맞춘다.
+  if (NEGATION.test(raw)) return false;
+  const a = raw.replace(/\s*[(（][^)）]*[)）]\s*$/, "").trim();
+  return APPROVAL.test(a);
+}
+
 /** 의문형은 요청이 아니라 질의 — 요청 동사가 섞여 있어도 질의가 우선한다 (J6) */
 const QUESTION_MARK = /[?？]\s*$/;
 const QUESTION_WORD =

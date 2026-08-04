@@ -170,6 +170,161 @@ console.log("[승인 판정 — C2/C3]");
   check("명세를 못 찾아도 명시적 승인은 해제", getState(dir, "a").phase === "approved");
 }
 
+console.log("[선택창 승인 — M3]");
+{
+  const dir = freshDir();
+  let seq = 0;
+  // AskUserQuestion 결과가 담긴 트랜스크립트: assistant(명세 텍스트 + tool_use) → user(toolUseResult)
+  const askTranscript = (specText, answers, ts) => {
+    const p = path.join(dir, `ask-${seq++}.jsonl`);
+    const questions = Object.keys(answers).map((q) => ({ question: q, options: [] }));
+    const lines = [
+      JSON.stringify({
+        type: "assistant",
+        ...(ts ? { timestamp: ts } : {}),
+        message: { content: [{ type: "text", text: specText }, { type: "tool_use", name: "AskUserQuestion", input: { questions } }] },
+      }),
+      JSON.stringify({ type: "user", ...(ts ? { timestamp: ts } : {}), toolUseResult: { questions, answers }, message: { content: [] } }),
+    ];
+    fs.writeFileSync(p, lines.join("\n") + "\n");
+    return p;
+  };
+  const write = (sid, tp) =>
+    runHook("pre-tool-use.js", { session_id: sid, tool_name: "Write", tool_input: {}, transcript_path: tp }, dir);
+  const denied = (out) => out?.hookSpecificOutput?.permissionDecision === "deny";
+
+  // 승인 선택 → 클릭 직후 첫 쓰기가 열리고 상태가 전이된다
+  setState(dir, "k1", { phase: "spec_pending", cycleStartedAt: "2026-01-01T00:00:00Z" });
+  const tp1 = askTranscript("[MR-SPEC]\n✓ 오타 2건 수정", { "이 명세대로 진행할까요?": "승인" }, "2026-01-02T00:00:00Z");
+  check("선택창 '승인' → 쓰기 허용", write("k1", tp1) === null);
+  check("선택창 '승인' → phase=approved", getState(dir, "k1").phase === "approved");
+
+  setState(dir, "k2", { phase: "spec_pending" });
+  check("'승인 (권장)' 도 승인 (장식 제거)", write("k2", askTranscript("[MR-SPEC] x", { "진행?": "승인 (권장)" })) === null);
+
+  // 라벨 안에 '승인'이 포함된 다른 옵션은 승인이 아니다 (부분 일치 금지)
+  setState(dir, "k3", { phase: "probing" });
+  check(
+    "'…항상 승인 (권장)' 라벨은 승인 아님",
+    denied(write("k3", askTranscript("게이트 정책 질문", { "게이트 정책?": "발산 0이면 통과 + 비가역만 항상 승인 (권장)" })))
+  );
+
+  setState(dir, "k4", { phase: "spec_pending" });
+  check("부정 자유입력은 승인 아님", denied(write("k4", askTranscript("[MR-SPEC] x", { "진행?": "아니 승인 말고 이렇게 바꿔" }))));
+
+  setState(dir, "k5", { phase: "spec_pending" });
+  check("'수정 필요' 는 승인 아님", denied(write("k5", askTranscript("[MR-SPEC] x", { "진행?": "수정 필요" }))));
+
+  // 이전 사이클의 승인 선택은 이번 사이클에 새지 않는다
+  setState(dir, "k6", { phase: "probing", cycleStartedAt: "2026-01-03T00:00:00Z" });
+  check(
+    "이전 사이클의 선택 승인은 무효",
+    denied(write("k6", askTranscript("[MR-SPEC] old", { "진행?": "승인" }, "2026-01-02T00:00:00Z")))
+  );
+
+  // Stop 훅도 같은 전이를 밟는다 (읽기만 하는 작업의 정상 종료)
+  setState(dir, "k7", { phase: "probing" });
+  const stopOut = runHook("stop.js", { session_id: "k7", transcript_path: askTranscript("[MR-SPEC] y", { "진행?": "승인" }) }, dir);
+  check("Stop 훅에서도 선택 승인 인식", stopOut === null && getState(dir, "k7").phase === "approved");
+
+  // prompt-submit도 같은 전이를 밟고, 이후 인사에 개입하지 않는다
+  setState(dir, "k8", { phase: "probing" });
+  const out8 = runHook(
+    "prompt-submit.js",
+    { session_id: "k8", prompt: "고마워!", transcript_path: askTranscript("[MR-SPEC] z", { "진행?": "승인" }) },
+    dir
+  );
+  check("선택 승인 후 인사 → approved 유지·무개입", out8 === null && getState(dir, "k8").phase === "approved");
+
+  // 선택창으로 승인된 뒤 습관적으로 입력한 '승인'이 새 사이클을 열면 안 된다
+  setState(dir, "k9", { phase: "approved" });
+  runHook("prompt-submit.js", { session_id: "k9", prompt: "승인" }, dir);
+  check("approved 상태의 '승인' 입력은 무시", getState(dir, "k9").phase === "approved");
+
+  // 아카이브: 본문 명세가 있으면 그것을 보존 (D13)
+  const specDir2 = path.join(os.homedir(), ".mind-reader", h16(dir), "specs");
+  check(
+    "선택 승인도 명세 아카이브 (D13)",
+    fs.readdirSync(specDir2).some((f) => fs.readFileSync(path.join(specDir2, f), "utf8").includes("오타 2건"))
+  );
+
+  // 압축 확인 경로: 본문에 [MR-SPEC] 이 없으면 질문·답변 자체가 명세로 아카이브된다
+  setState(dir, "k10", { phase: "probing" });
+  write("k10", askTranscript("탐색 결과 설명", { "[MR-SPEC] 오타 2건을 이렇게 이해했습니다. 진행할까요?": "승인" }));
+  check(
+    "압축 확인(질문=명세)도 아카이브",
+    fs.readdirSync(specDir2).some((f) => fs.readFileSync(path.join(specDir2, f), "utf8").includes("이렇게 이해했습니다"))
+  );
+
+  // ── 리뷰 반영 (M1~M5) ──
+  const rawTranscript = (lines) => {
+    const p = path.join(dir, `raw-${seq++}.jsonl`);
+    fs.writeFileSync(p, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    return p;
+  };
+  const askPair = (specText, answers, extra = {}) => {
+    const questions = Object.keys(answers).map((q) => ({ question: q, options: [] }));
+    return [
+      { type: "assistant", message: { content: [{ type: "text", text: specText }, { type: "tool_use", name: "AskUserQuestion", input: { questions } }] } },
+      { type: "user", toolUseResult: { questions, answers }, message: { content: [] }, ...extra },
+    ];
+  };
+
+  // M2: 사이클 경계는 fail-closed — 타임스탬프 없는 승인 항목은 cycleStartedAt이 있으면 무효
+  setState(dir, "k11", { phase: "probing", cycleStartedAt: "2026-01-03T00:00:00Z" });
+  check("타임스탬프 없는 승인은 사이클 경계에서 무효 (fail-closed)", denied(write("k11", askTranscript("[MR-SPEC] x", { "진행?": "승인" }))));
+
+  // M4: 부정어가 후행 괄호 안에 있는 직접 입력은 승인이 아니다
+  setState(dir, "k12", { phase: "spec_pending" });
+  check("'승인 (수정 후에)' 는 승인 아님", denied(write("k12", askTranscript("[MR-SPEC] x", { "진행?": "승인 (수정 후에)" }))));
+
+  // latest-only: 이전 '승인' 뒤에 최신 '수정 필요'가 오면 차단 (가장 최근 선택창만 판정)
+  setState(dir, "k13", { phase: "spec_pending" });
+  check(
+    "이전 승인 뒤 최신 '수정 필요' → 차단 (latest-only)",
+    denied(write("k13", rawTranscript([...askPair("[MR-SPEC] v1", { "진행?": "승인" }), ...askPair("수정 논의", { "다시 진행?": "수정 필요" })])))
+  );
+
+  // M3: 명세 없는 무관한 질문의 '승인' 라벨 클릭은 게이트를 열지 않는다
+  setState(dir, "k14", { phase: "probing" });
+  check("명세 없는 질문의 '승인' 은 무효", denied(write("k14", askTranscript("커밋 안내", { "지금 커밋할까요?": "승인" }))));
+
+  // M5: 아카이브는 사용자가 화면에서 승인한 명세(압축 확인)에 바인딩 — 거부된 구버전이 아니라
+  setState(dir, "k15", { phase: "spec_pending" });
+  const tp15 = rawTranscript([
+    { type: "assistant", message: { content: [{ type: "text", text: "[MR-SPEC] v1: 파일 전부 삭제 방식" }] } },
+    ...askPair("재확인", { "[MR-SPEC] v2: 백업 후 이동 방식으로 진행?": "승인" }),
+  ]);
+  check("압축 재확인 승인 → 쓰기 허용", write("k15", tp15) === null);
+  const archived15 = fs.readdirSync(specDir2).map((f) => fs.readFileSync(path.join(specDir2, f), "utf8"));
+  check("승인된 v2가 아카이브되고 거부된 v1은 아님", archived15.some((t) => t.includes("백업 후 이동")) && !archived15.some((t) => t.includes("전부 삭제")));
+
+  // M1: 위조 가능한 모양(배열 answers, 빈 questions, 사이드체인)은 승인이 아니다
+  setState(dir, "k16", { phase: "probing" });
+  check(
+    "answers가 배열이면 무효",
+    denied(write("k16", rawTranscript([{ type: "user", toolUseResult: { questions: [{ question: "q" }], answers: ["승인"] }, message: { content: [] } }])))
+  );
+  setState(dir, "k16", { phase: "probing" });
+  check(
+    "questions가 비어 있으면 무효",
+    denied(write("k16", rawTranscript([{ type: "user", toolUseResult: { questions: [], answers: { q: "승인" } }, message: { content: [] } }])))
+  );
+  setState(dir, "k17", { phase: "probing" });
+  check(
+    "서브에이전트(isSidechain) 항목은 무효",
+    denied(write("k17", rawTranscript(askPair("[MR-SPEC] x", { "진행?": "승인" }, { isSidechain: true }))))
+  );
+
+  // 계측: 선택창 승인은 via:"ask" 로 기록된다
+  const events = fs
+    .readFileSync(path.join(os.homedir(), ".mind-reader", h16(dir), "events.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  check("approved 이벤트에 via:'ask' 기록", events.some((e) => e.type === "approved" && e.via === "ask"));
+}
+
 console.log("[approved 누수 — J1]");
 {
   const dir = freshDir();

@@ -5,6 +5,7 @@ import {
   archiveSpec,
   findLatestSpec,
   specHashOf,
+  resolveAskApproval,
   isDisabled,
   logEvent,
   countToolUsesSince,
@@ -27,7 +28,9 @@ function main(): void {
   const input = readStdin();
   if (isDisabled(input)) return; // kill switch / 프로젝트 예외
   const prompt = String(input.prompt ?? "");
-  const state = loadState(input);
+  // 선택창(AskUserQuestion)으로 이미 승인된 사이클이면 먼저 approved로 전이한다 (M3).
+  // 비파일 작업은 쓰기 도구를 안 거치므로, 다음 발화 시점의 이 경로가 승인을 반영한다.
+  const state = resolveAskApproval(input, loadState(input));
 
   // 승인 처리 (C3): 승인은 "직전 턴에 실제로 제시된 명세"에만 적용된다.
   // 직전 메시지가 명세가 아니면(예: 사용자가 수정을 요청한 뒤의 후속 질문) 승인으로 치지 않는다.
@@ -44,6 +47,7 @@ function main(): void {
     saveState(input, "approved", { specHash: specText ? specHashOf(specText) ?? undefined : undefined });
     if (specText) archiveSpec(input, specText);
     logEvent(input, "approved", {
+      via: "prompt",
       questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
       specVersions: state.specVersions ?? 1,
       specFound: !!specText,
@@ -55,6 +59,8 @@ function main(): void {
 
   // 승인 후 새 발화 → 새 사이클 (승인 상태가 다음 작업으로 새지 않게, J1)
   if (state.phase === "approved") {
+    // 선택창으로 이미 승인된 뒤 습관적으로 입력한 '승인'이 새 사이클을 열면 안 된다
+    if (isApproval(prompt)) return;
     if (!startsNewCycle(prompt)) return;
     startCycle(input, prompt);
     return;

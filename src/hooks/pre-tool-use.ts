@@ -1,4 +1,12 @@
-import { readStdin, loadState, isDisabled, logEvent, output, HookInput } from "../common";
+import {
+  readStdin,
+  loadState,
+  resolveAskApproval,
+  isDisabled,
+  logEvent,
+  output,
+  HookInput,
+} from "../common";
 import { isReadOnlyCommand } from "../bash-guard";
 
 /**
@@ -30,7 +38,7 @@ function deny(reason: string): void {
 }
 
 const GATE_MSG =
-  "mind-reader gate: 의도 명세가 아직 승인되지 않았습니다. 읽기·조사 도구는 사용할 수 있습니다. 사용자에게 의도 파악 질문을 진행하고 [MR-SPEC] 명세를 제시해 '승인'을 받으세요.";
+  "mind-reader gate: 의도 명세가 아직 승인되지 않았습니다. 읽기·조사 도구는 사용할 수 있습니다. 의도를 파악한 뒤 [MR-SPEC] 명세를 제시하고, AskUserQuestion으로 '승인'/'수정 필요' 선택지를 제시해 사용자의 '승인' 선택을 받으세요.";
 
 /** 계측을 위해 현재 입력을 보관 (deny 시 기록) */
 let current: HookInput = {};
@@ -47,7 +55,9 @@ function main(): void {
 
   // 게이트는 사이클이 진행 중일 때만 작동한다.
   // idle(시작된 사이클 없음)에서 차단하면 승인할 명세 자체가 없어 빠져나올 수 없다 — 데드락.
-  const phase = loadState(input).phase;
+  // 선택창(AskUserQuestion)으로 이미 승인됐다면 여기서 즉시 전이한다 — 클릭 직후의
+  // 첫 쓰기가 이 경로로 열린다 (M3).
+  const phase = resolveAskApproval(input, loadState(input)).phase;
   if (phase !== "probing" && phase !== "spec_pending") return;
 
   if (ALWAYS_ALLOWED.has(tool)) return;

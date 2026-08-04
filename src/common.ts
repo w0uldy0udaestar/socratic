@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { isAskApproval } from "./filter";
 
 export const PHASES = ["idle", "probing", "spec_pending", "approved"] as const;
 export type Phase = (typeof PHASES)[number];
@@ -261,6 +262,94 @@ export function findLatestSpec(input: HookInput, sinceIso?: string, maxEntries =
     /* 접근 실패는 null */
   }
   return null;
+}
+
+/**
+ * 사이클 시작 이후의 가장 최근 AskUserQuestion 결과를 찾아, 답변이 명시적 '승인'이면
+ * 질문·답변 본문과 함께 반환한다 (M3 선택창 승인 채널 — 실측: 트랜스크립트의 user형
+ * 항목에 toolUseResult.questions/answers가 구조화되어 남는다).
+ * 가장 최근 ask 결과 하나만 판정하고 더 과거는 보지 않는다(C3와 같은 원칙). 판정은
+ * 클릭 이후 처음 뜨는 훅 시점에 래치된다 — 이후의 새 선택창이 이를 되돌리지는 않는다.
+ */
+export function findAskApproval(
+  input: HookInput,
+  sinceIso?: string,
+  maxEntries = 200
+): { answer: string; qaText: string } | null {
+  const p = input.transcript_path;
+  if (!p) return null;
+  try {
+    const lines = fs.readFileSync(p, "utf8").trim().split("\n");
+    const start = Math.max(0, lines.length - maxEntries);
+    for (let i = lines.length - 1; i >= start; i--) {
+      let e: any;
+      try {
+        e = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      // 서브에이전트 대화(isSidechain)의 잔재는 부모 세션의 승인이 아니다
+      if (e?.type !== "user" || e?.isSidechain === true) continue;
+      const r = e?.toolUseResult;
+      // AskUserQuestion 결과의 실제 모양을 엄격히 요구한다 — questions는 비어 있지 않은
+      // 배열, answers는 배열이 아닌 객체. 다른 도구 결과가 우연히(또는 고의로) 비슷한
+      // 모양을 가져도 승인으로 오인하지 않기 위한 최소 방어다.
+      if (!r || !Array.isArray(r.questions) || r.questions.length === 0) continue;
+      if (!r.answers || typeof r.answers !== "object" || Array.isArray(r.answers)) continue;
+      // 사이클 경계는 fail-closed: 타임스탬프가 없거나 이전 사이클이면 승인 후보가 아니다.
+      // 타임스탬프 부재 시 검사를 건너뛰면 과거 승인이 모든 사이클로 영구 누수된다.
+      if (sinceIso && (typeof e.timestamp !== "string" || e.timestamp < sinceIso)) return null;
+      const answers = Object.values(r.answers).filter((v): v is string => typeof v === "string");
+      const hit = answers.find((a) => isAskApproval(a));
+      if (!hit) return null;
+      const qaText = r.questions
+        .map((q: any) => String(q?.question ?? ""))
+        .filter(Boolean)
+        .map((q: string) => `${q}\n선택: ${String((r.answers as Record<string, unknown>)[q] ?? "")}`)
+        .join("\n\n");
+      return { answer: hit, qaText };
+    }
+  } catch {
+    /* 접근 실패는 null */
+  }
+  return null;
+}
+
+/**
+ * 선택창 승인이 이미 이뤄졌으면 상태를 approved로 전이한다 (M3).
+ * 쓰기 직전(PreToolUse)·턴 종료(Stop)·다음 발화(UserPromptSubmit) 어디서 먼저
+ * 확인되든 같은 전이를 밟는다 — 한 훅만 보다가 생기는 데드락을 막는다.
+ */
+export function resolveAskApproval(input: HookInput, state: SessionState): SessionState {
+  if (state.phase !== "probing" && state.phase !== "spec_pending") return state;
+  const hit = findAskApproval(input, state.cycleStartedAt);
+  if (!hit) return state;
+  // 선택창 승인은 명세에만 성립한다: 압축 확인(질문 텍스트에 [MR-SPEC]) 또는 사이클 내
+  // 본문 명세가 있어야 한다. 선택지 라벨은 모델이 작성하므로, 무관한 질문에 '승인' 라벨을
+  // 달아 클릭 한 번으로 게이트를 여는 경로를 막는다. 사용자가 직접 타이핑하는 채팅 '승인'
+  // (D9)은 이 제한 없이 그대로 백업 경로다.
+  const askHasSpec = hit.qaText.includes("[MR-SPEC]");
+  const bodySpec = askHasSpec ? null : findLatestSpec(input, state.cycleStartedAt);
+  if (!askHasSpec && !bodySpec) return state;
+  // 아카이브·해시는 사용자가 실제 화면에서 승인한 것에 바인딩한다 — 압축 확인이면 그
+  // 질문·답변 자체가 명세다. 본문 명세를 우선하면 직전에 거부된 구버전이 바인딩될 수 있다.
+  const specText = askHasSpec ? hit.qaText : (bodySpec as string);
+  const specHash = specHashOf(specText) ?? undefined;
+  try {
+    saveState(input, "approved", { specHash });
+    archiveSpec(input, specText);
+  } catch {
+    /* 상태 저장 실패가 pre-tool-use의 fail-closed를 타고 읽기 도구까지 막으면 안 된다.
+       판정은 메모리로 반환하고, 다음 훅이 같은 트랜스크립트로 재판정한다. */
+  }
+  logEvent(input, "approved", {
+    via: "ask",
+    questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
+    specVersions: state.specVersions ?? 1,
+    specFound: true,
+    cycleStartedAt: state.cycleStartedAt,
+  });
+  return { phase: "approved", specHash, updatedAt: new Date().toISOString() };
 }
 
 export function specHashOf(text: string): string | null {
