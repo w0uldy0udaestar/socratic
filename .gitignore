@@ -1,0 +1,17 @@
+# secrets
+.env*
+*.key
+*.pem
+credentials*
+
+# node
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# runtime state
+.mind-reader/
+
+# os
+.DS_Store
