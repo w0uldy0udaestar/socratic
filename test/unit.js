@@ -33,7 +33,7 @@ function check(name, cond) {
   }
 }
 
-const freshDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "mr-test-"));
+const freshDir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mr-test-")));
 const h16 = (s) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
 const stateFile = (dir, sid) =>
   path.join(os.homedir(), ".mind-reader", h16(dir), `${h16(sid)}.json`);

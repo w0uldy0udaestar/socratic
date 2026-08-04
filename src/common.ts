@@ -90,7 +90,14 @@ export function readStdin(): HookInput {
 }
 
 export function projectDir(input: HookInput): string {
-  return process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const raw = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  // 심볼릭 링크를 해석해 정규화한다. macOS의 /var → /private/var 처럼 같은 디렉토리가
+  // 다른 문자열로 전달되면 상태가 두 곳으로 갈라져 승인이 유실된다.
+  try {
+    return fs.realpathSync(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function hash(s: string): string {

@@ -37,7 +37,7 @@ function check(name, cond) {
   }
 }
 
-const freshDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "mr-tel-"));
+const freshDir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mr-tel-")));
 
 function events(dir) {
   const f = eventsFile(dir);

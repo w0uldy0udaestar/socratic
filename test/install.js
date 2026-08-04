@@ -21,7 +21,7 @@ function check(name, cond) {
   }
 }
 
-const freshDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "mr-inst-"));
+const freshDir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mr-inst-")));
 const h16 = (s) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
 
 function runHook(hook, input, projectDir, env = {}) {
