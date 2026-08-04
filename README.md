@@ -1,52 +1,161 @@
-# mind-reader
+<div align="center">
 
-CLI AI 에이전트가 당신의 모호한 요청을 추측으로 처리하지 않게 만드는 도구.
+# 🧠 mind-reader
 
-매 프롬프트를 훅(hook)으로 가로채, 에이전트가 아키네이터처럼 선택지 기반 질문으로 진짜 의도를 좁힌 뒤 — 정제된 의도 명세를 승인받기 전에는 파일 수정·명령 실행을 **기술적으로 차단**합니다. 모델이 기억해주길 바라지 않습니다. 프로세스가 강제합니다.
+**Your AI agent shouldn't guess what you meant.**
 
-## 상태
+A hook-based hard gate for CLI coding agents: it intercepts every prompt, forces the agent to
+pin down your *actual* intent through multiple-choice questions, and **technically blocks all
+writes and command execution** until you approve a one-screen intent spec — with a single click.
 
-**v0.1 코어 구현 완료** (Claude Code). 유닛 68건 + 헤드리스 E2E 통과 — [구현 노트](docs/m1-implementation-notes.md). 다음은 실사용 검증(M2).
-마스터플랜은 [PLAN.md](PLAN.md), 설계 근거는 [리서치 종합](docs/research-synthesis.md) 참조.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+[![Works with Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-d97757)](https://claude.com/claude-code)
+[![Status](https://img.shields.io/badge/status-beta%20·%20dogfooding-yellow)](#status--roadmap)
 
-## 동작
+</div>
 
-1. 프롬프트를 훅으로 가로채 의도 파악 프로토콜을 주입한다 (모든 요청, 자동)
-2. 계획이 갈리지 않는 명확한 요청은 질문 없이 통과, 갈리면 선택지 질문으로 파고든다
-3. 승인 전에는 쓰기·실행 도구가 차단된다 (읽기·조사는 허용)
-4. `[MR-SPEC]` 의도 명세를 제시하고 "승인"을 받으면 게이트가 열리고, 명세는 `~/.mind-reader/`에 아카이브된다
+---
 
-## 끄는 법
+## Why
 
-| 범위 | 방법 |
-|---|---|
-| 특정 프로젝트만 | 프로젝트 루트에 빈 파일 `.mind-reader-off` 생성 (하위 폴더에서도 인식) |
-| 전역 즉시 | 환경변수 `MIND_READER_OFF=1` |
-| 완전 제거 | `./uninstall.sh` |
+CLI agents are eager. Give them an ambiguous request and they'll pick *an* interpretation —
+confidently, silently — and run with it. You find out three files later.
 
-게이트는 **의도 파악 사이클이 진행 중일 때만** 작동합니다. 사이클이 시작되지 않은 상태(idle)나 승인 후에는 아무것도 막지 않습니다.
+Prompting the model to "ask clarifying questions" doesn't fix this, because it leaves the
+decision to model discretion: sometimes it asks, sometimes it doesn't. And multi-turn
+back-and-forth actively degrades output quality — LLMs show a [~39% performance drop](https://arxiv.org/abs/2505.06120)
+in multi-turn versus single-turn settings with a consolidated prompt.
 
-## 지표 보기
+**mind-reader makes the process deterministic instead of hopeful:**
 
-```bash
-npm run stats          # 전체 프로젝트 합산
-npm run stats -- <경로> # 특정 프로젝트
+1. Every substantive prompt gets an intent-clarification protocol injected — automatically, every time.
+2. The agent measures *divergence*: it imagines 3–5 different execution plans. If they don't
+   meaningfully differ, zero questions are asked. If they do, it asks — one multiple-choice
+   question at a time, each one stating what it decides.
+3. Until you approve the resulting `[MR-SPEC]` intent spec, **write tools and mutating shell
+   commands are blocked at the hook level**. Reading and research stay open. The model can't
+   forget the rule, because the rule isn't in the model.
+4. You approve with **one click** in a selection dialog. The refined spec — not your original
+   fuzzy phrasing — becomes the execution contract, and it's archived as a growing asset.
+
+> The model doesn't remember the process. The process enforces itself.
+
+## How it works
+
+Three hooks, one shared state machine, no LLM calls inside the hooks (millisecond overhead):
+
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant H as Hooks
+    participant A as Agent
+
+    U->>H: "clean up the blog"
+    H->>A: inject protocol (UserPromptSubmit)
+    A->>A: sample 3–5 plans → find diverging axes
+    A->>U: multiple-choice question (only if plans diverge)
+    U->>A: pick / type / "you decide"
+    A->>U: [MR-SPEC] intent spec + Approve? dialog
+    Note over H: until approval: Write/Edit/Bash mutations DENIED
+    U->>H: ✅ one click: "Approve"
+    H->>A: gate open — execute the approved spec
+    Note over H: spec archived to ~/.mind-reader/
 ```
 
-질문 발생률, 평균 질문 수, **명세 수정률**(0%에 가까우면 확인 단계가 형식적이라는 신호), 미완료율, 게이트 차단 분포를 출력합니다.
+| Hook | Role | Failure semantics |
+|---|---|---|
+| `UserPromptSubmit` | Lightweight filter (greetings, questions, and slash commands pass through), then protocol injection | fail-open (soft layer) |
+| `PreToolUse` | Default-deny write gate until approval. Read tools always allowed; Bash restricted to a structural read-only allowlist (no chaining, substitution, or redirection) | **fail-closed** (hard layer) |
+| `Stop` | Gates non-file work too (writing, research): the agent can't end its turn mid-cycle without either asking or presenting a spec | fail-open, max 3 re-blocks |
 
-## 로드맵
+Details that took real debugging to get right:
 
-- v0.1 — Claude Code (`UserPromptSubmit` 주입 + `PreToolUse` 승인 게이트 + `AskUserQuestion`)
-- v0.2 — Gemini CLI
-- v0.3 — OpenAI Codex CLI
-- v0.4 — opencode / Amp
+- **Obvious requests cost one click, not an interrogation.** Zero divergence → no questions →
+  a single dialog restating the request as a spec. Approve and it runs.
+- **Approval binds to what you saw.** The gate reads your actual dialog selection from the
+  transcript, refuses labels that merely *contain* "approve", rejects negated free-text
+  ("approve, but…"), and won't accept approvals from a previous cycle or a subagent's transcript.
+- **Irreversible actions always get confirmed** — deletes, deploys, force-pushes — even when
+  you said "just handle it".
+- **No self-approval.** State lives outside the project (`~/.mind-reader/`), and the pre-approval
+  Bash allowlist can't write to it. Subagents inherit the gate (verified empirically).
+- **Specs accumulate.** Every approved spec is archived with metadata — a searchable record of
+  what you actually decided, project by project.
 
-## 설치
+## Install
+
+Requires [Claude Code](https://claude.com/claude-code) and Node ≥ 18.
 
 ```bash
 git clone https://github.com/w0uldy0udaestar/mind-reader.git
-cd mind-reader && ./install.sh     # 빌드 + ~/.claude/settings.json에 훅 병합(백업 후 append)
+cd mind-reader && ./install.sh
 ```
 
-제거는 `./uninstall.sh`. 설치 스크립트는 기존 설정을 덮어쓰지 않고, 우리 훅만 마커로 식별해 추가·제거합니다.
+The installer builds, then **merges** hooks into `~/.claude/settings.json` — it backs up first,
+appends only marker-identified entries, never touches your existing hooks, and runs a self-test.
+Remove cleanly with `./uninstall.sh`.
+
+## Turning it off
+
+The gate only operates mid-cycle — when idle or after approval it blocks nothing. When you do
+need out:
+
+| Scope | How |
+|---|---|
+| One project | create an empty `.mind-reader-off` file in the project root |
+| Everywhere, instantly | `MIND_READER_OFF=1` |
+| Completely | `./uninstall.sh` |
+
+## Telemetry
+
+mind-reader instruments itself so you can tell whether it's earning its keep:
+
+```bash
+npm run stats           # all projects
+npm run stats -- <dir>  # one project
+```
+
+Reported: question rate, average questions per cycle, **spec revision rate** (near 0% means the
+confirmation step has become a rubber stamp), abandonment rate, gate-denial breakdown, and
+whether approvals come from the dialog or typed text.
+
+## Design principles
+
+| Principle | Why |
+|---|---|
+| Always-on, hook-enforced | Skills and instruction files are model-discretionary; hooks are deterministic. |
+| Two-tier enforcement | Injection (soft) shapes behavior; the write gate (hard) makes "guess and run" impossible. |
+| Convergence is the only exit | No question cap. Fatigue is managed by question *value density* — every question must actually change the plan — not by an arbitrary limit. [Users happily answer questions that improve results.](https://arxiv.org/abs/2407.12017) |
+| Questions supply vocabulary | Recognition beats recall. If you can't articulate it, the agent switches angles: options → strawman proposal you correct → tiny mockup you react to. |
+| The spec is the product | Half the value is your own thinking, made explicit and archived. |
+| Fail-safe by layer | The hard gate fails closed; soft layers fail open; a hook that can't even start leaves your agent usable. |
+
+## Status & roadmap
+
+**v0.1 — Claude Code.** Core complete: 200+ assertions across unit, robustness, gate-matrix,
+telemetry, and headless E2E suites, plus an adversarial code review of the approval channel.
+Currently being dogfooded by its author; friction findings feed the design directly (the
+one-click approval channel exists because typing "approve" turned out to be exactly the kind of
+friction that gets a tool uninstalled).
+
+- **v0.2** — Gemini CLI (`BeforeAgent` / `BeforeTool` / `ask_user`)
+- **v0.3** — OpenAI Codex CLI
+- **v0.4** — opencode / Amp
+
+Design history, decision log (D1–D16), and research notes live in [`PLAN.md`](PLAN.md) and
+[`docs/`](docs/) — currently in Korean; the decision IDs referenced in code comments resolve there.
+
+## Development
+
+```bash
+npm install
+npm run build   # tsc → dist/
+npm test        # unit · telemetry · install · robustness · gate-matrix
+```
+
+Tests isolate `$HOME`, so running them never pollutes your real usage metrics.
+
+## License
+
+[MIT](LICENSE)
