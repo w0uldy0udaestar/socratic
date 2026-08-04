@@ -3,7 +3,7 @@ import {
   loadState,
   saveState,
   archiveSpec,
-  lastAssistantTurn,
+  findLatestSpec,
   specHashOf,
   isDisabled,
   logEvent,
@@ -37,20 +37,20 @@ function main(): void {
     (state.phase === "spec_pending" || state.phase === "probing") &&
     isApproval(prompt)
   ) {
-    const turn = lastAssistantTurn(input);
-    const currentHash = specHashOf(turn.text);
-    if (currentHash) {
-      saveState(input, "approved", { specHash: currentHash });
-      archiveSpec(input, turn.text);
-      logEvent(input, "approved", {
-        questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
-        specVersions: state.specVersions ?? 1,
-        cycleStartedAt: state.cycleStartedAt,
-      });
-      inject(APPROVED_NOTICE);
-      return;
-    }
-    // 명세 없이 들어온 승인어는 일반 답변으로 취급 — 아래 흐름으로
+    // 사이클 안에서 제시된 최근 명세를 찾는다(직전 메시지가 아니어도 된다).
+    const specText = findLatestSpec(input, state.cycleStartedAt);
+    // 사용자가 명시적으로 '승인'했다면 항상 해제한다. 명세 마커를 찾지 못했다고
+    // 승인을 무시하면 사용자가 게이트에서 빠져나올 방법이 없어진다 — 종료 판정자는 사용자다(D9).
+    saveState(input, "approved", { specHash: specText ? specHashOf(specText) ?? undefined : undefined });
+    if (specText) archiveSpec(input, specText);
+    logEvent(input, "approved", {
+      questions: countToolUsesSince(input, "AskUserQuestion", state.cycleStartedAt),
+      specVersions: state.specVersions ?? 1,
+      specFound: !!specText,
+      cycleStartedAt: state.cycleStartedAt,
+    });
+    inject(APPROVED_NOTICE);
+    return;
   }
 
   // 승인 후 새 발화 → 새 사이클 (승인 상태가 다음 작업으로 새지 않게, J1)

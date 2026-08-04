@@ -163,10 +163,11 @@ console.log("[승인 판정 — C2/C3]");
   const archived = fs.readdirSync(specDir).map((f) => fs.readFileSync(path.join(specDir, f), "utf8"));
   check("아카이브는 최신 명세 본문", archived.some((t) => t.includes("서버 저장 (수정됨)")));
 
-  // 명세 없이 승인어 → 승인 아님
+  // 명세 마커를 찾지 못해도 사용자의 명시적 '승인'은 존중한다.
+  // (마커를 요구하면 명세 뒤에 한 마디만 덧붙어도 영영 승인이 안 되는 데드락이 생긴다)
   setState(dir, "a", { phase: "probing" });
   runHook("prompt-submit.js", { session_id: "a", prompt: "승인", transcript_path: transcriptWith(dir, "어느 쪽을 원하세요?") }, dir);
-  check("명세 없인 승인 불가", getState(dir, "a").phase === "probing");
+  check("명세를 못 찾아도 명시적 승인은 해제", getState(dir, "a").phase === "approved");
 }
 
 console.log("[approved 누수 — J1]");

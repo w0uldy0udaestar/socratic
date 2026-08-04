@@ -77,6 +77,56 @@ console.log("[프로젝트 단위 예외 .mind-reader-off]");
   check("하위 경로에서도 예외 인식", runHook("pre-tool-use.js", { session_id: "p2", tool_name: "Write", tool_input: {} }, sub) === null);
 }
 
+console.log("[승인 데드락 — 명세가 직전 메시지가 아닐 때]");
+{
+  const dir = freshDir();
+  const mkTranscript = (turns) => {
+    const p = path.join(dir, `tr-${turns.length}-${Math.random().toString(36).slice(2)}.jsonl`);
+    fs.writeFileSync(
+      p,
+      turns
+        .map((c) => JSON.stringify({ type: "assistant", timestamp: "2026-08-04T07:00:00.000Z", message: { content: c } }))
+        .join("\n") + "\n"
+    );
+    return p;
+  };
+  const approve = (sid, tp) => {
+    setState(dir, sid, { phase: "spec_pending", cycleStartedAt: "2026-08-04T06:00:00.000Z" });
+    runHook("prompt-submit.js", { session_id: sid, prompt: "승인", transcript_path: tp }, dir);
+    return JSON.parse(
+      fs.readFileSync(path.join(os.homedir(), ".mind-reader", h16(dir), `${h16(sid)}.json`), "utf8")
+    ).phase;
+  };
+  const SPEC = [{ type: "text", text: "[MR-SPEC]\n변경: HANDOFF.md" }];
+
+  check("명세 직후 승인", approve("d1", mkTranscript([SPEC])) === "approved");
+  check(
+    "명세 뒤 설명이 이어져도 승인",
+    approve("d2", mkTranscript([SPEC, [{ type: "text", text: "쓰기가 차단되었습니다. 승인이 필요합니다." }]])) === "approved"
+  );
+  check(
+    "명세 뒤 도구 호출이 와도 승인",
+    approve("d3", mkTranscript([SPEC, [{ type: "tool_use", name: "AskUserQuestion", input: {} }]])) === "approved"
+  );
+  check(
+    "명세 마커가 아예 없어도 사용자 승인은 존중",
+    approve("d4", mkTranscript([[{ type: "text", text: "이렇게 진행하겠습니다." }]])) === "approved"
+  );
+
+  // 이전 사이클의 명세는 아카이브 대상이 아니어야 한다
+  const specDir = path.join(os.homedir(), ".mind-reader", h16(dir), "specs");
+  const before = fs.existsSync(specDir) ? fs.readdirSync(specDir).length : 0;
+  const old = path.join(dir, "old.jsonl");
+  fs.writeFileSync(
+    old,
+    JSON.stringify({ type: "assistant", timestamp: "2026-08-04T05:00:00.000Z", message: { content: SPEC } }) + "\n"
+  );
+  setState(dir, "d5", { phase: "spec_pending", cycleStartedAt: "2026-08-04T06:00:00.000Z" });
+  runHook("prompt-submit.js", { session_id: "d5", prompt: "승인", transcript_path: old }, dir);
+  const after = fs.existsSync(specDir) ? fs.readdirSync(specDir).length : 0;
+  check("사이클 이전 명세는 아카이브하지 않음", after === before);
+}
+
 console.log("[설치·제거 왕복 — 마커가 제거된 상황]");
 {
   const dir = freshDir();

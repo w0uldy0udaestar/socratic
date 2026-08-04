@@ -221,6 +221,41 @@ export function lastAssistantTurn(
   return { text: "", tools: [] };
 }
 
+/**
+ * 이번 사이클에서 제시된 가장 최근 명세를 찾는다.
+ * 직전 메시지 하나만 보면, 명세 제시 후 에이전트가 한 마디라도 덧붙이는 순간
+ * 승인이 영원히 불가능해진다(실사용에서 발생한 데드락).
+ */
+export function findLatestSpec(input: HookInput, sinceIso?: string, maxEntries = 60): string | null {
+  const p = input.transcript_path;
+  if (!p) return null;
+  try {
+    const lines = fs.readFileSync(p, "utf8").trim().split("\n");
+    const start = Math.max(0, lines.length - maxEntries);
+    for (let i = lines.length - 1; i >= start; i--) {
+      let e: any;
+      try {
+        e = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      if (e?.type !== "assistant") continue;
+      // 이전 사이클의 명세가 승인되지 않도록 사이클 시작 이후만 본다
+      if (sinceIso && typeof e.timestamp === "string" && e.timestamp < sinceIso) break;
+      const content = e?.message?.content;
+      if (!Array.isArray(content)) continue;
+      const text = content
+        .filter((c: any) => c?.type === "text" && typeof c.text === "string")
+        .map((c: any) => c.text)
+        .join("\n");
+      if (text.includes("[MR-SPEC]")) return text;
+    }
+  } catch {
+    /* 접근 실패는 null */
+  }
+  return null;
+}
+
 export function specHashOf(text: string): string | null {
   const i = text.indexOf("[MR-SPEC]");
   return i === -1 ? null : hash(text.slice(i).replace(/\s+/g, " ").trim());
