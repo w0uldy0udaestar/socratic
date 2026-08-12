@@ -1,6 +1,6 @@
 # HANDOFF — socratic (구 mind-reader)
 
-> 최종 갱신: 2026-08-09 | 브랜치 `feature/m4-intent-discovery`
+> 최종 갱신: 2026-08-12 | 브랜치 `feature/m4-intent-discovery` (origin에 push 완료, main 미머지)
 
 ## 현재 상태 요약
 
@@ -8,7 +8,7 @@ socratic은 CLI AI 에이전트가 모호한 요청을 추측으로 처리하지
 
 **M4 핵심 (`docs/m4-intent-discovery-notes.md`)**: ① 발산 측정 대상을 '실행 계획'에서 **'결과물 그림'(목적·형태·기준·취향·제약)**으로 전환 — 실행이 자명해도 그림이 갈리면 모호한 것 ② **모호도 비례** — 명시된 것은 되묻지 않되(D16 유지), 압축 확인 직행은 완전 자명한 지시만 ③ **확신 수렴** — 라운드마다 "'정확히 그거'라고 할 확신"을 재평가, 확신 전 명세 제시 금지 ④ "질문 0개는 정상 결과" 문구 삭제. 훅 코드·승인 마커([MR-SPEC], '승인' 라벨)는 불변이라 훅 3종은 손대지 않았다.
 
-> **현재 이 컴퓨터에 설치돼 있지 않다** (2026-08-09, 개정 전 설치본 제거). `./uninstall.sh`로 훅 3종만 제거했고 `~/.mind-reader/`의 명세 아카이브 98건·지표 이벤트 329건은 보존했다 — M4 검증의 M3 기준선이다. 재설치는 `npm run build` 후 `./install.sh`(훅이 worktree의 `dist/`를 직접 가리키므로 빌드가 선행돼야 한다).
+> **현재 이 컴퓨터에 설치돼 있지 않다** (2026-08-10, 개정 전 설치본 제거). `./uninstall.sh`로 훅 3종만 제거했고 `~/.mind-reader/`의 명세 아카이브 98건·지표 이벤트 329건은 보존했다 — M4 검증의 M3 기준선이다. 제거 직전 백업은 `~/.claude/settings.json.mind-reader.bak-1786343699570`.
 
 ## 완료·미완료
 
@@ -21,20 +21,32 @@ socratic은 CLI AI 에이전트가 모호한 요청을 추측으로 처리하지
 - [x] M2 dogfooding — 설치·실사용·제거까지 완주. 결론은 "마찰 과다"
 - [x] **M3 마찰 완화 구현** — 승인 채널 선택창 전환(D15) + 발산 0 압축 확인(D16), 신규 테스트 21건 포함 전체 통과
 - [x] M3 코드 리뷰 — major 5건(모양 위조·타임스탬프 fail-open·무관 질문 승인·조건부 승인·거부 명세 바인딩) 전부 수정, 상세 `docs/m3-friction-notes.md` §코드 리뷰 반영
-- [x] M3 검증: 재설치 dogfooding — 승인 마찰은 해소, 그러나 확인 게이트 퇴화 발견 → M4 (2026-08-09)
+- [x] M3 검증: 재설치 dogfooding — 승인 마찰은 해소, 그러나 확인 게이트 퇴화 발견 → M4 (2026-08-10)
 - [x] 리브랜딩 — 레포·README·package.json을 socratic으로, public 공개 (내부 식별자 리네임은 IDEAS 백로그)
 - [x] **M4 의도 발견 프로토콜 개정(D17)** — 그림 발산 측정·모호도 비례·확신 수렴, 테스트 201건 전부 통과
+- [x] M4 프롬프트 리뷰 — 탈출구 상 3·중 2건 반영(가정 강등 남용·강등 은닉·0항 훅 모순 등), `docs/m4-intent-discovery-notes.md` §프롬프트 리뷰 반영
+- [x] 개정 전 설치본 제거 — 훅 3종만 제거, 명세·지표 보존 (2026-08-10)
 - [ ] M4 검증: 개정 프로토콜 재설치 dogfooding — 질문 라운드 수 분포·명세 수정률·질문 품질 (`docs/m4-intent-discovery-notes.md` §검증 계획)
 - [ ] M4 2단계 판정 — 텍스트 개정으로 부족하면 훅 강제(질문 0회 명세 차단) 추가
 - [ ] v0.2 Gemini CLI 어댑터 (`BeforeAgent`/`BeforeTool`/`ask_user`)
 
 ## 다음 단계 + 재개 방법
 
-**1순위: 개정 프로토콜 재설치 dogfooding.** feature/m4-intent-discovery를 main에 머지하고 `./install.sh`로 재설치한 뒤(설치본은 아직 M4 개정 전 프로토콜이다) 일상 작업에 투입해 검증한다. 관찰 포인트: ① 모호한 위임형 요청에서 질문 라운드가 실제로 발생하는가(0라운드 지배적 = 개정 실패) ② 자명한 지시는 여전히 선택창 1번으로 끝나는가(D16 유지 확인) ③ 명세 수정률(0에 가까우면 확인 도장화 신호) ④ 답을 이미 아는 질문이 나오는가. 부족하면 2단계 훅 강제로.
+**1순위: 개정 프로토콜 재설치 dogfooding.** 현재 미설치 상태이고 M4 개정은 소스에만 있다. 재개 절차는 정확히 이 순서다:
 
-**먼저 열어볼 파일**: `docs/m4-intent-discovery-notes.md`(퇴화 진단·개정 내역·검증 계획) → `src/protocol.ts`(개정 본문) → `PLAN.md`(D17·M4).
+```bash
+cd /Users/universe/orca/workspaces/mind-reader/anglerfish
+npm test              # 201건 통과 확인
+npm run build         # ★ 필수 — 훅은 dist/를 직접 가리킨다
+./install.sh          # 셀프테스트 통과 확인
+grep -c 아키네이터 dist/protocol.js   # 1 이상이어야 M4 반영본
+```
 
-재설치는 `./install.sh`, 지표 확인은 `npm run stats`.
+그 뒤 일상 작업에 투입해 관찰한다: ① 모호한 위임형 요청에서 질문 라운드가 실제로 발생하는가(0라운드 지배적 = 개정 실패) ② 자명한 지시는 여전히 선택창 1번으로 끝나는가(D16 유지 확인) ③ 명세 수정률(0에 가까우면 확인 도장화 신호) ④ 답을 이미 아는 질문이 나오는가. 지표는 `npm run stats` — 기존 329건이 M3 기준선이므로 재설치 시점을 기록해두고 전후를 나눠 본다. 부족하면 2단계 훅 강제로.
+
+**먼저 열어볼 파일**: `docs/m4-intent-discovery-notes.md`(퇴화 진단·개정 내역·프롬프트 리뷰·검증 계획) → `src/protocol.ts`(개정 본문) → `PLAN.md`(D17·M4).
+
+**머지 판단**: `feature/m4-intent-discovery`는 origin에 push돼 있고 main과 충돌 없다(main은 이 브랜치의 조상). dogfooding으로 개정 효과를 확인한 뒤 머지하는 편이 롤백이 쉽다.
 
 ## 주요 결정사항과 이유
 
